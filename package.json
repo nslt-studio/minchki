@@ -1,0 +1,20 @@
+{
+  "name": "minchki",
+  "version": "1.0.0",
+  "description": "Minchki — external JS bundle for Webflow (Vite + Swup)",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "gsap": "^3.15.0",
+    "swup": "^4.9.2"
+  },
+  "devDependencies": {
+    "cloudflared": "^0.7.1",
+    "vite": "^8.1.4"
+  }
+}
