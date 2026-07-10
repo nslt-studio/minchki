@@ -1,6 +1,7 @@
 import { initSwup } from './swup.js'
 import { initMedia, initImages } from './utils/media.js'
 import { initClock } from './utils/clock.js'
+import { initLoader } from './utils/loader.js'
 import { initCursor } from './utils/cursor.js'
 import { initHome, destroyHome } from './pages/home.js'
 import { initWork } from './pages/work.js'
@@ -66,6 +67,10 @@ function bootstrap() {
   // #time est en dehors du container #swup : une seule init suffit, pas besoin
   // de la relancer à chaque navigation.
   initClock()
+
+  // Écran de chargement : uniquement au tout premier chargement du site, pas
+  // à chaque navigation swup.
+  initLoader()
 
   // page:view ne se déclenche qu'après une navigation swup, pas au chargement
   // initial : on initialise donc la page courante manuellement une première fois.
