@@ -1,10 +1,11 @@
 import { initSwup } from './swup.js'
 import { initMedia, initImages } from './utils/media.js'
 import { initClock } from './utils/clock.js'
+import { initCursor } from './utils/cursor.js'
 import { initHome, destroyHome } from './pages/home.js'
 import { initWork } from './pages/work.js'
 import { initPlayground, destroyPlayground } from './pages/playground.js'
-import { initAbout } from './pages/about.js'
+import { initAbout, destroyAbout } from './pages/about.js'
 import { initDetails } from './pages/details.js'
 
 // Ajouter une nouvelle page : créer src/pages/<nom>.js puis l'enregistrer ici.
@@ -26,6 +27,10 @@ function runCurrentPage() {
 
   const page = getCurrentPage()
 
+  // initCursor() se réinitialise à chaque page et ne fait rien si .cursor /
+  // [item-title] sont absents de la page courante.
+  initCursor()
+
   // logo-home/logo-main sont en dehors de #swup : si on n'est pas/plus sur la
   // home, on coupe son ScrollTrigger et on force l'état statique (logo-main visible).
   if (page !== 'home') {
@@ -36,6 +41,12 @@ function runCurrentPage() {
   // survivent à la navigation swup si on ne les retire pas explicitement.
   if (page !== 'playground') {
     destroyPlayground()
+  }
+
+  // Le scrollspy de la page about pose un listener sur window + un
+  // IntersectionObserver : à retirer explicitement en quittant la page.
+  if (page !== 'about') {
+    destroyAbout()
   }
 
   if (!page) return

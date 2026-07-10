@@ -19,8 +19,9 @@ const CONFIG = {
   // Décalage vertical premier plan/arrière-plan = radius × ce facteur. Plus
   // grand = effet "vu d'en haut" plus marqué ; 0 = aucun décalage.
   verticalSpreadFactor: 0.125,
-  // Vitesse de rotation automatique (degrés/frame environ).
-  speed: { landscape: 0.1, portrait: 0.3 },
+  // Vitesse de rotation automatique (degrés/frame environ) — vitesse de repos
+  // constante ; la molette/trackpad ajoute un boost temporaire par-dessus.
+  speed: { landscape: 0.2, portrait: 0.6 },
   // Sensibilité du drag (pixels de souris → degrés de rotation).
   dragSpeed: { landscape: 0.05, portrait: 0.1 },
   // Marge de sécurité (en % de la largeur/hauteur d'écran) entre le bord d'un
@@ -29,6 +30,42 @@ const CONFIG = {
 }
 
 let mm = null
+
+// macOS (écrans ProMotion) peut réduire le vrai taux de rafraîchissement de
+// l'écran tant qu'il ne détecte pas d'activité "justifiant" un framerate
+// élevé — même si notre JS tourne à chaque rAF, il y a alors réellement
+// moins de frames rendues par seconde (rotation saccadée), et bouger la
+// souris lève ce throttling instantanément. will-change ne suffit pas à
+// l'empêcher. Un flux vidéo actif (même invisible) est traité comme une
+// activité continue par le système et empêche ce throttling : on en génère
+// un sans aucun fichier externe via canvas.captureStream().
+function startKeepAwakeVideo() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 2
+  canvas.height = 2
+
+  const stream = canvas.captureStream(30)
+  const video = document.createElement('video')
+  video.muted = true
+  video.playsInline = true
+  video.srcObject = stream
+  video.style.cssText = 'position:fixed;inset:0;width:1px;height:1px;opacity:0;pointer-events:none;'
+  document.body.appendChild(video)
+  video.play().catch(() => {})
+
+  return () => {
+    stream.getTracks().forEach((track) => track.stop())
+    video.remove()
+  }
+}
+
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[array[i], array[j]] = [array[j], array[i]]
+  }
+  return array
+}
 
 export function initPlayground() {
   destroyPlayground()
@@ -44,9 +81,11 @@ export function initPlayground() {
       const { isLandscape, isTouch } = context.conditions
 
       const list = document.querySelector('.playground-list')
-      const items = document.querySelectorAll('.playground-item')
+      const items = shuffle(Array.from(document.querySelectorAll('.playground-item')))
       const count = items.length
       if (!list || !count) return
+
+      const stopKeepAwakeVideo = startKeepAwakeVideo()
 
       const angleStep = 360 / count
       const unit = isLandscape ? 'vw' : 'vh'
@@ -88,10 +127,17 @@ export function initPlayground() {
       list.appendChild(spinner)
       items.forEach((item) => spinner.appendChild(item))
 
+      // willChange: 'transform' sur les éléments animés à chaque frame : sans
+      // ce hint, macOS (écrans ProMotion) peut réduire le taux de
+      // rafraîchissement réel tant qu'il ne détecte pas d'input utilisateur,
+      // même si le JS continue de tourner à chaque rAF — d'où la rotation
+      // saccadée à l'arrêt, fluide dès qu'on bouge la souris. Le hint indique
+      // au navigateur que ces éléments restent activement animés.
       gsap.set(spinner, {
         position: 'fixed',
         inset: 0,
         transformStyle: 'preserve-3d',
+        willChange: 'transform',
       })
 
       gsap.set(items, {
@@ -102,6 +148,7 @@ export function initPlayground() {
         yPercent: -50,
         width: isLandscape ? `${itemSize * CONFIG.itemSizeFactor}${unit}` : 'auto',
         height: isLandscape ? 'auto' : `${itemSize * CONFIG.itemSizeFactor}${unit}`,
+        willChange: 'transform',
       })
 
       // Positionnement en cercle par trigonométrie : contrairement à un CSS
@@ -139,7 +186,7 @@ export function initPlayground() {
       setRotationY(rotY)
       setRotationX(rotX)
       if (isLandscape) {
-        gsap.to(spinner, { y: '-5vh', duration: 4, ease: 'expo.out' })
+        gsap.set(spinner, { y: '-5vh' })
       }
 
       // Les items au premier plan doivent toujours être un peu plus bas que
@@ -199,10 +246,21 @@ export function initPlayground() {
 
       // Boucle de rotation continue (auto-rotation + drag + molette)
       function onTick() {
+        // Le framerate réel varie (ex : throttling macOS du rAF quand la
+        // souris est immobile → rotation saccadée/plus lente ; redevient
+        // fluide/rapide dès qu'il y a de l'input) : on normalise l'incrément
+        // constant sur le temps réel écoulé entre deux ticks
+        // (gsap.ticker.deltaRatio(60), normalisé sur une base 60fps) pour
+        // garder une vitesse angulaire stable en degrés/seconde quel que
+        // soit le framerate effectif. Le drag et la molette restent bruts :
+        // ce sont des déplacements déjà liés au geste réel, pas une vitesse
+        // à extrapoler.
+        const frameScale = gsap.ticker.deltaRatio(60)
+
         // Inversé (-1 dans les deux cas) : le sens naturel attendu est que le
         // contenu suive le doigt/curseur pendant le drag.
         const dragDelta = (isLandscape ? frameDeltaX : frameDeltaY) * -1
-        const next = (isLandscape ? rotY : rotX) - state.increment - dragDelta - state.wheelY
+        const next = (isLandscape ? rotY : rotX) - state.increment * frameScale - dragDelta - state.wheelY
 
         if (isLandscape) {
           rotY = next
@@ -264,6 +322,7 @@ export function initPlayground() {
         gsap.ticker.remove(onTick)
         draggable.kill()
         dragProxy.remove()
+        stopKeepAwakeVideo()
       }
     }
   )

@@ -1,6 +1,4 @@
-function slugify(value) {
-  return value.trim().toLowerCase().replace(/\s+/g, '-')
-}
+import { slugify } from '../utils/slugify.js'
 
 function initViewToggle() {
   const buttons = document.querySelectorAll('[data-view]')
@@ -15,7 +13,7 @@ function initViewToggle() {
       button.classList.toggle('active', button.getAttribute('data-view') === view)
     })
     views.grid.style.display = view === 'grid' ? 'block' : 'none'
-    views.index.style.display = view === 'index' ? 'block' : 'none'
+    views.index.style.display = view === 'index' ? 'flex' : 'none'
   }
 
   buttons.forEach((button) => {
@@ -82,6 +80,21 @@ function initCategoryFilter() {
 
   // Pas besoin de ré-écrire l'URL si on vient déjà de la lire dedans.
   applyFilter(initialCategory, { syncUrl: !matchedButton })
+}
+
+function initLegend() {
+  const legend = document.getElementById('legend')
+  const indexItems = document.querySelectorAll('.index-list .index-item')
+  if (!legend || !indexItems.length) return
+
+  indexItems.forEach((item) => {
+    item.addEventListener('mouseenter', () => {
+      legend.textContent = 'Description'
+    })
+    item.addEventListener('mouseleave', () => {
+      legend.textContent = 'Year'
+    })
+  })
 }
 
 function initSort() {
@@ -213,4 +226,5 @@ export function initWork() {
   initViewToggle()
   initCategoryFilter()
   initSort()
+  initLegend()
 }
