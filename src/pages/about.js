@@ -1,9 +1,3 @@
-const SECTION_IDS = {
-  programs: 'programs',
-  words: 'words',
-  offering: 'offering',
-}
-
 let cleanup = null
 
 function isTouchDevice() {
@@ -156,15 +150,17 @@ function initWordsDrag() {
   }
 }
 
+// data-nav="top" scrolle en haut de page ; toute autre valeur est lue
+// directement comme l'#id de la section à cibler (data-nav="offering" ->
+// #offering) — aucune liste fixe à tenir à jour, on peut ajouter autant de
+// button [data-nav] que voulu du côté Webflow.
 function scrollToNav(nav) {
   if (nav === 'top') {
     window.scrollTo({ top: 0, behavior: 'smooth' })
     return
   }
 
-  const id = SECTION_IDS[nav]
-  const section = id && document.getElementById(id)
-  section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  document.getElementById(nav)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 export function initAbout() {
@@ -209,8 +205,13 @@ export function initAbout() {
     })
   })
 
-  const sections = Object.entries(SECTION_IDS)
-    .map(([nav, id]) => ({ nav, el: document.getElementById(id) }))
+  // Une section par button [data-nav] (hors "top", qui n'a pas de section
+  // propre) — dérivé directement des buttons présents sur la page, pas d'une
+  // liste fixe.
+  const sections = [...buttons]
+    .map((btn) => btn.dataset.nav)
+    .filter((nav) => nav !== 'top')
+    .map((nav) => ({ nav, el: document.getElementById(nav) }))
     .filter((s) => s.el)
 
   let observer = null

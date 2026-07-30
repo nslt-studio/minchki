@@ -4,7 +4,7 @@ import { initClock } from './utils/clock.js'
 import { initLoader } from './utils/loader.js'
 import { initCursor } from './utils/cursor.js'
 import { initHome, destroyHome } from './pages/home.js'
-import { initWork } from './pages/work.js'
+import { initWork, destroyWork } from './pages/work.js'
 import { initPlayground, destroyPlayground } from './pages/playground.js'
 import { initAbout, destroyAbout } from './pages/about.js'
 import { initDetails } from './pages/details.js'
@@ -48,6 +48,12 @@ function runCurrentPage() {
   // IntersectionObserver : à retirer explicitement en quittant la page.
   if (page !== 'about') {
     destroyAbout()
+  }
+
+  // Le stagger des filters-button de la page work pose un listener scroll
+  // sur window : à retirer explicitement en quittant la page.
+  if (page !== 'work') {
+    destroyWork()
   }
 
   if (!page) return

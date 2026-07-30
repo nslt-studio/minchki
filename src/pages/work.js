@@ -1,4 +1,7 @@
+import gsap from 'gsap'
 import { slugify } from '../utils/slugify.js'
+
+let cleanup = null
 
 function initViewToggle() {
   const buttons = document.querySelectorAll('[data-view]')
@@ -36,11 +39,12 @@ function initCategoryFilter() {
     return category === 'all' || itemCategories.includes(category)
   }
 
-  const applyDim = (items, category, dimmedOpacity) => {
+  const applyDim = (items, category, dimmedOpacity, { blur = false } = {}) => {
     items.forEach((item) => {
       const match = matches(item, category)
       item.style.opacity = match ? '' : dimmedOpacity
       item.style.pointerEvents = match ? '' : 'none'
+      if (blur) item.style.filter = match ? '' : 'blur(10px)'
     })
   }
 
@@ -59,7 +63,7 @@ function initCategoryFilter() {
       button.classList.toggle('active', button.getAttribute('data-category') === category)
     })
 
-    applyDim(gridItems, category, '0.1')
+    applyDim(gridItems, category, '0.1', { blur: true })
     applyDim(indexItems, category, '0.35')
 
     if (syncUrl) updateUrl(category)
@@ -95,6 +99,148 @@ function initLegend() {
       legend.textContent = 'Year'
     })
   })
+}
+
+// Stagger même valeur que loader.js pour le moment — à ajuster séparément
+// par la suite, pas de couplage entre les deux.
+const FILTERS_STAGGER = 0.03
+
+// Tant qu'on n'est pas EXACTEMENT au top, les filter-button non-.active
+// passent en display:none (stagger du dernier vers le premier). Au retour
+// au top, ils repassent en display:block (stagger du premier vers le
+// dernier — l'inverse).
+function initFilters() {
+  // Éléments concernés par le display:none/block en stagger : les
+  // filter-button non-actifs, et les <p> parfois placés entre eux (toujours
+  // concernés, pas de notion d'actif pour eux). querySelectorAll avec un
+  // sélecteur groupé renvoie dans l'ordre du DOM, donc boutons et <p> restent
+  // correctement entrelacés pour le stagger.
+  function getToggleableElements() {
+    return [...document.querySelectorAll('.filters .filter-button:not(.active), .filters p')]
+  }
+
+  // .filters ne doit pas s'effondrer quand la plupart de ses éléments passent
+  // en display:none (sinon tout ce qui suit remonte/saute) : on fixe sa
+  // hauteur à celle qu'elle a avec TOUT (boutons + <p>) en display:block, quel
+  // que soit l'état d'affichage réel au moment de la mesure.
+  const filters = document.querySelector('.filters')
+  let resizeTimer = null
+
+  function lockFiltersHeight() {
+    if (!filters) return
+
+    const elements = [...filters.querySelectorAll('.filter-button, p')]
+    const previousDisplays = elements.map((el) => el.style.display)
+
+    filters.style.height = 'auto'
+    elements.forEach((el) => {
+      el.style.display = 'block'
+    })
+
+    const fullHeight = filters.getBoundingClientRect().height
+
+    elements.forEach((el, i) => {
+      el.style.display = previousDisplays[i]
+    })
+    filters.style.height = `${fullHeight}px`
+  }
+
+  function onResize() {
+    clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(lockFiltersHeight, 150)
+  }
+
+  lockFiltersHeight()
+  window.addEventListener('resize', onResize)
+
+  // Le texte des filter-button se termine par "," pour tous sauf le dernier
+  // (convention Webflow, texte réel, pas un ::after CSS). Vue/catégorie/tri
+  // ont chacun leur propre bouton actif : plusieurs .active peuvent donc
+  // rester visibles à la fois. C'est le DERNIER actif dans l'ordre du DOM
+  // qui devient visuellement le dernier élément affiché — s'il n'est pas
+  // naturellement le tout dernier bouton, sa virgule finale traîne toute
+  // seule : on la remplace par un point le temps qu'il soit le dernier
+  // visible, et on la restaure au retour au top.
+  function fixActiveComma(atTop) {
+    if (atTop) {
+      document.querySelectorAll('.filter-button[data-comma-swapped="true"]').forEach((btn) => {
+        btn.textContent = btn.textContent.replace(/\.(\s*)$/, ',$1')
+        delete btn.dataset.commaSwapped
+      })
+      return
+    }
+
+    const actives = document.querySelectorAll('.filter-button.active')
+    const lastActive = actives[actives.length - 1]
+    if (lastActive && /,\s*$/.test(lastActive.textContent)) {
+      lastActive.dataset.commaSwapped = 'true'
+      lastActive.textContent = lastActive.textContent.replace(/,(\s*)$/, '.$1')
+    }
+  }
+
+  let isAtTop = window.scrollY <= 0
+
+  // gsap.set() sur plusieurs cibles ignore silencieusement stagger (seuls
+  // .to/.from/.fromTo le gèrent réellement) : .to() avec une durée quasi
+  // nulle pour que le stagger fonctionne (display ne s'anime pas en soi).
+  function applyState(atTop) {
+    fixActiveComma(atTop)
+
+    const elements = getToggleableElements()
+    if (!elements.length) return
+
+    if (atTop) {
+      gsap.to(elements, { display: 'block', duration: 0.01, stagger: FILTERS_STAGGER })
+    } else {
+      gsap.to(elements, { display: 'none', duration: 0.01, stagger: { each: FILTERS_STAGGER, from: 'end' } })
+    }
+  }
+
+  // État initial correct sans animation (ex: page chargée déjà scrollée).
+  fixActiveComma(isAtTop)
+  gsap.set(getToggleableElements(), { display: isAtTop ? 'block' : 'none' })
+
+  // Clic sur un filter-button.active (un de ceux qui restent affichés en
+  // mode réduit) : ré-affiche tout, même sans être remonté au top. Repasse
+  // dès le moindre scroll suivant (voir onScroll).
+  let manuallyExpanded = false
+
+  function onFiltersClick(e) {
+    if (isAtTop || manuallyExpanded) return
+    if (!e.target.closest('.filter-button.active')) return
+
+    manuallyExpanded = true
+    applyState(true)
+  }
+
+  filters?.addEventListener('click', onFiltersClick)
+
+  function onScroll() {
+    const nowAtTop = window.scrollY <= 0
+
+    if (nowAtTop !== isAtTop) {
+      isAtTop = nowAtTop
+      manuallyExpanded = false
+      applyState(isAtTop)
+      return
+    }
+
+    // Toujours pas au top, mais ré-étendu manuellement au clic : le moindre
+    // scroll suivant re-réduit tout.
+    if (!isAtTop && manuallyExpanded) {
+      manuallyExpanded = false
+      applyState(false)
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true })
+
+  return () => {
+    window.removeEventListener('scroll', onScroll)
+    window.removeEventListener('resize', onResize)
+    filters?.removeEventListener('click', onFiltersClick)
+    clearTimeout(resizeTimer)
+  }
 }
 
 function initSort() {
@@ -227,4 +373,12 @@ export function initWork() {
   initCategoryFilter()
   initSort()
   initLegend()
+
+  const filtersCleanup = initFilters()
+  cleanup = () => filtersCleanup?.()
+}
+
+export function destroyWork() {
+  cleanup?.()
+  cleanup = null
 }
