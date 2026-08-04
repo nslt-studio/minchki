@@ -3,6 +3,7 @@ import { initMedia, initImages } from './utils/media.js'
 import { initClock } from './utils/clock.js'
 import { initLoader } from './utils/loader.js'
 import { initCursor } from './utils/cursor.js'
+import { initNavMobile } from './utils/navMobile.js'
 import { initHome, destroyHome } from './pages/home.js'
 import { initWork } from './pages/work.js'
 import { initPlayground, destroyPlayground } from './pages/playground.js'
@@ -33,7 +34,7 @@ function runCurrentPage() {
   initCursor()
 
   // logo-home/logo-main sont en dehors de #swup : si on n'est pas/plus sur la
-  // home, on coupe son ScrollTrigger et on force l'état statique (logo-main visible).
+  // home, on coupe ses listeners de scroll et on force l'état statique (logo-main visible).
   if (page !== 'home') {
     destroyHome()
   }
@@ -71,6 +72,10 @@ function bootstrap() {
   // Écran de chargement : uniquement au tout premier chargement du site, pas
   // à chaque navigation swup.
   initLoader()
+
+  // .nav-mob est en dehors de #swup : une seule init suffit, pas besoin de
+  // la relancer à chaque navigation.
+  initNavMobile()
 
   // page:view ne se déclenche qu'après une navigation swup, pas au chargement
   // initial : on initialise donc la page courante manuellement une première fois.

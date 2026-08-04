@@ -9,10 +9,10 @@ const CONFIG = {
   // Rayon "souhaité" du cercle (en vw en landscape, vh en portrait) — sera
   // automatiquement réduit si besoin pour ne jamais sortir de l'écran (voir
   // edgeMargin plus bas).
-  radius: { landscape: 37.5, portrait: 28 },
+  radius: { landscape: 37.5, portrait: 50 },
   // Taille des items, en fraction de leur part de circonférence : 2π (~6.28)
   // = bord à bord (aucun espace) ; plus petit = plus d'espace entre eux.
-  itemSizeFactor: 4.8,
+  itemSizeFactor: { landscape: 4.8, portrait: 5.3 },
   // Perspective = radius × ce facteur. Plus grand = scène plus "plate" (moins
   // de fisheye) ; plus petit = effet 3D plus prononcé.
   perspectiveFactor: 2,
@@ -21,7 +21,7 @@ const CONFIG = {
   verticalSpreadFactor: 0.125,
   // Vitesse de rotation automatique (degrés/frame environ) — vitesse de repos
   // constante ; la molette/trackpad ajoute un boost temporaire par-dessus.
-  speed: { landscape: 0.2, portrait: 0.6 },
+  speed: { landscape: 0.2, portrait: 0.2 },
   // Sensibilité du drag (pixels de souris → degrés de rotation).
   dragSpeed: { landscape: 0.05, portrait: 0.1 },
   // Marge de sécurité (en % de la largeur/hauteur d'écran) entre le bord d'un
@@ -59,6 +59,18 @@ function startKeepAwakeVideo() {
   }
 }
 
+// Ratio largeur/hauteur intrinsèque du média (img/video) d'un item : utilisé
+// pour calculer une largeur explicite (au lieu de "auto", peu fiable ici —
+// la liste est positionnée en absolute, sans contexte de taille naturelle à
+// hériter). Repli sur 1 (carré) si le média n'est pas encore chargé.
+function getAspectRatio(item) {
+  const media = item.querySelector('img, video')
+  if (!media) return 1
+  const w = media.naturalWidth || media.videoWidth || 0
+  const h = media.naturalHeight || media.videoHeight || 0
+  return w && h ? w / h : 1
+}
+
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -92,10 +104,13 @@ export function initPlayground() {
 
       // Rayon effectif = le rayon souhaité, plafonné pour qu'un item au plus
       // loin du centre (radius + moitié de sa propre largeur) reste toujours
-      // en deçà de (50% de l'écran - marge de sécurité).
+      // en deçà de (50% de l'écran - marge de sécurité). En portrait, le
+      // débordement est acceptable : pas de plafond, radius.portrait pilote
+      // directement la taille.
       const preferredRadius = isLandscape ? CONFIG.radius.landscape : CONFIG.radius.portrait
-      const maxRadius = (50 - CONFIG.edgeMargin) / (1 + CONFIG.itemSizeFactor / (2 * count))
-      const radius = Math.min(preferredRadius, maxRadius)
+      const itemSizeFactor = isLandscape ? CONFIG.itemSizeFactor.landscape : CONFIG.itemSizeFactor.portrait
+      const maxRadius = (50 - CONFIG.edgeMargin) / (1 + itemSizeFactor / (2 * count))
+      const radius = isLandscape ? Math.min(preferredRadius, maxRadius) : preferredRadius
 
       const itemSize = radius / count
       const speed = isLandscape ? CONFIG.speed.landscape : CONFIG.speed.portrait
@@ -140,22 +155,31 @@ export function initPlayground() {
         willChange: 'transform',
       })
 
+      // La dimension qui porte l'espacement le long du cercle est fixe (pour
+      // un gap constant entre items, quel que soit leur média) : width en
+      // landscape, height en portrait — symétrique.
       gsap.set(items, {
         position: 'absolute',
         top: '50%',
         left: '50%',
         xPercent: -50,
         yPercent: -50,
-        width: isLandscape ? `${itemSize * CONFIG.itemSizeFactor}${unit}` : 'auto',
-        height: isLandscape ? 'auto' : `${itemSize * CONFIG.itemSizeFactor}${unit}`,
+        height: isLandscape ? 'auto' : `${itemSize * itemSizeFactor}${unit}`,
         willChange: 'transform',
       })
 
-      // Positionnement en cercle par trigonométrie : contrairement à un CSS
-      // "transform: rotateY() translateZ()" qui chaîne les deux, GSAP compose
-      // x/y/z et les rotations indépendamment. On calcule donc directement la
-      // position (x/z ou y/z) de chaque item sur le cercle, et rotationX/Y ne
-      // sert plus qu'à l'orienter face au centre.
+      // Position calculée à la main pour les deux orientations : GSAP
+      // compose translate puis rotate (pas l'inverse), donc un z constant +
+      // rotation seule ne suffit pas à répartir les items sur le cercle
+      // (testé : ça les superpose tous au même endroit). x/y/z doivent donc
+      // porter la position réelle. La rotation individuelle (même angle,
+      // même signe que dans x/y) s'additionne à la rotation dynamique du
+      // spinner (même axe) : au moment précis où un item arrive devant, les
+      // deux s'annulent et l'item est à plat.
+      // La largeur en portrait est calculée explicitement (au lieu de
+      // "auto", qui cassait la mise en page ici) à partir du ratio naturel
+      // du média de chaque item, mise à l'échelle sur la hauteur fixe.
+      const heightValue = itemSize * itemSizeFactor
       const angles = []
       items.forEach((item, i) => {
         const angle = i * angleStep
@@ -163,6 +187,9 @@ export function initPlayground() {
         angles[i] = { angle, radians }
 
         gsap.set(item, {
+          width: isLandscape
+            ? `${itemSize * itemSizeFactor}${unit}`
+            : `${heightValue * getAspectRatio(item)}${unit}`,
           rotationX: isLandscape ? 0 : -angle,
           rotationY: isLandscape ? angle : 0,
           x: isLandscape ? `${Math.sin(radians) * radius}${unit}` : 0,
@@ -257,9 +284,9 @@ export function initPlayground() {
         // à extrapoler.
         const frameScale = gsap.ticker.deltaRatio(60)
 
-        // Inversé (-1 dans les deux cas) : le sens naturel attendu est que le
-        // contenu suive le doigt/curseur pendant le drag.
-        const dragDelta = (isLandscape ? frameDeltaX : frameDeltaY) * -1
+        // Inversé pour que le contenu suive le doigt/curseur pendant le
+        // drag (signe opposé entre landscape et portrait, comme pour la molette).
+        const dragDelta = (isLandscape ? frameDeltaX : frameDeltaY) * (isLandscape ? -1 : 1)
         const next = (isLandscape ? rotY : rotX) - state.increment * frameScale - dragDelta - state.wheelY
 
         if (isLandscape) {
@@ -286,7 +313,7 @@ export function initPlayground() {
       // Molette de souris
       const wheelDecay = gsap.to(state, { wheelY: 0, duration: 0.5, paused: true, overwrite: true })
       function onWheel(e) {
-        const damping = isLandscape ? 0.1 : -0.1
+        const damping = 0.1
         state.wheelY = gsap.utils.interpolate(state.wheelY, e.deltaY, 0.2) * damping
         wheelDecay.invalidate().restart()
       }
