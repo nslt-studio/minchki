@@ -4,6 +4,7 @@ import { initClock } from './utils/clock.js'
 import { initLoader } from './utils/loader.js'
 import { initCursor } from './utils/cursor.js'
 import { initNavMobile } from './utils/navMobile.js'
+import { initWebflowForms } from './utils/webflowForms.js'
 import { initHome, destroyHome } from './pages/home.js'
 import { initWork } from './pages/work.js'
 import { initPlayground, destroyPlayground } from './pages/playground.js'
@@ -32,6 +33,9 @@ function runCurrentPage() {
   // initCursor() se réinitialise à chaque page et ne fait rien si .cursor /
   // [item-title] sont absents de la page courante.
   initCursor()
+
+  // Formulaires injectés par swup : webflow.js ne les a pas initialisés.
+  initWebflowForms()
 
   // logo-home/logo-main sont en dehors de #swup : si on n'est pas/plus sur la
   // home, on coupe ses listeners de scroll et on force l'état statique (logo-main visible).

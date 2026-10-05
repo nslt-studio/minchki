@@ -17,9 +17,28 @@ export function initClock() {
   const el = document.getElementById('time')
   if (!el) return
 
+  // Au hover (desktop uniquement), on remplace l'heure par un texte fixe ;
+  // le tick ne réécrit pas pendant le hover, et on revient à l'heure au hover out.
+  let hovering = false
+
   const tick = () => {
+    if (hovering) return
     el.textContent = getLondonTime()
   }
+
+  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)')
+
+  el.addEventListener('mouseenter', () => {
+    if (!canHover.matches) return
+    hovering = true
+    el.textContent = 'Working Worldwide'
+  })
+
+  el.addEventListener('mouseleave', () => {
+    if (!hovering) return
+    hovering = false
+    tick()
+  })
 
   tick()
   setInterval(tick, 1000)

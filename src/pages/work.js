@@ -43,6 +43,13 @@ function initCategoryFilter() {
   const indexItems = indexList ? [...indexList.querySelectorAll('.index-item')] : []
   if (!buttons.length || (!gridItems.length && !indexItems.length)) return
 
+  // Le bouton "All" (data-category="All", casse libre) correspond à la valeur
+  // interne 'all' : aucun filtre, tous les items actifs.
+  const categoryOf = (button) => {
+    const category = (button.getAttribute('data-category') || '').trim()
+    return category.toLowerCase() === 'all' ? 'all' : category
+  }
+
   const matches = (item, category) => {
     const itemCategories = (item.getAttribute('data-categories') || '')
       .split(',')
@@ -84,7 +91,7 @@ function initCategoryFilter() {
 
   const applyFilter = (category, { syncUrl = true } = {}) => {
     buttons.forEach((button) => {
-      button.classList.toggle('active', button.getAttribute('data-category') === category)
+      button.classList.toggle('active', categoryOf(button) === category)
     })
 
     applyDim(gridItems, category, '0.1', { blur: true })
@@ -97,7 +104,7 @@ function initCategoryFilter() {
   }
 
   buttons.forEach((button) => {
-    button.addEventListener('click', () => applyFilter(button.getAttribute('data-category')))
+    button.addEventListener('click', () => applyFilter(categoryOf(button)))
   })
 
   // Filtre porté par l'URL (?category=...) au chargement, pour arriver depuis
@@ -107,7 +114,7 @@ function initCategoryFilter() {
   const matchedButton = urlCategory
     ? [...buttons].find((button) => slugify(button.getAttribute('data-category') || '') === urlCategory)
     : null
-  const initialCategory = matchedButton ? matchedButton.getAttribute('data-category') : 'all'
+  const initialCategory = matchedButton ? categoryOf(matchedButton) : 'all'
 
   // Pas besoin de ré-écrire l'URL si on vient déjà de la lire dedans.
   applyFilter(initialCategory, { syncUrl: !matchedButton })
