@@ -71,6 +71,32 @@ function getAspectRatio(item) {
   return w && h ? w / h : 1
 }
 
+// Safari/iOS : les <img loading="lazy"> de Webflow placées dans le carrousel
+// 3D (spinner en position fixed + preserve-3d) sont souvent jugées "hors
+// écran" et ne se chargent jamais → invisibles (hauteur auto à 0, jamais
+// révélées par initImages). On force donc un chargement immédiat ; réassigner
+// src relance la requête si le navigateur l'avait différée.
+function forceEagerLoad(item) {
+  item.querySelectorAll('img').forEach((img) => {
+    if (img.loading !== 'lazy') return
+    img.loading = 'eager'
+    if (!img.complete && img.getAttribute('src')) img.src = img.getAttribute('src')
+  })
+}
+
+// Appelle cb une fois les dimensions naturelles du média connues (tout de
+// suite si c'est déjà le cas).
+function onMediaReady(item, cb) {
+  const media = item.querySelector('img, video')
+  if (!media) return
+  const ready = media.tagName === 'VIDEO' ? media.readyState >= 1 : media.complete && media.naturalWidth
+  if (ready) {
+    cb()
+  } else {
+    media.addEventListener(media.tagName === 'VIDEO' ? 'loadedmetadata' : 'load', cb, { once: true })
+  }
+}
+
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -195,6 +221,23 @@ export function initPlayground() {
           x: isLandscape ? `${Math.sin(radians) * radius}${unit}` : 0,
           y: isLandscape ? 0 : `${Math.sin(radians) * radius}${unit}`,
           z: `${Math.cos(radians) * radius}${unit}`,
+        })
+      })
+
+      // Ratio réel appliqué dès que le média est chargé (getAspectRatio
+      // renvoie 1 tant qu'il ne l'est pas). aspect-ratio en CSS : la boîte
+      // garde sa forme au resize (tailles en vw/vh), sans recalcul JS. En
+      // portrait, la largeur dépend aussi du ratio : on la recalcule.
+      let alive = true
+      items.forEach((item) => {
+        forceEagerLoad(item)
+        onMediaReady(item, () => {
+          if (!alive) return
+          const ratio = getAspectRatio(item)
+          context.add(() => {
+            gsap.set(item, { aspectRatio: ratio })
+            if (!isLandscape) gsap.set(item, { width: `${heightValue * ratio}${unit}` })
+          })
         })
       })
 
@@ -341,6 +384,7 @@ export function initPlayground() {
 
       // Nettoyage (utile en SPA / navigation par ajax)
       return () => {
+        alive = false
         document.body.removeEventListener('wheel', onWheel)
         items.forEach(($item) => {
           $item.removeEventListener('mouseenter', onItemMouseEnter)

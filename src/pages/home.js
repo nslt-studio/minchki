@@ -16,44 +16,59 @@ export function initHome() {
   const logoMain = document.querySelector('.logo-main')
   if (!logoHome || !logoMain) return
 
+  // La PROGRESSION du scroll se base sur 100svh, stable quand la barre
+  // d'adresse mobile apparaît/disparaît (sinon l'animation avance/recule d'un
+  // coup à chaque mouvement de barre). Mesurée via une sonde, relue au resize.
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100svh;visibility:hidden;pointer-events:none;'
+  document.body.appendChild(probe)
+
+  // La POSITION, elle, doit coller au bas de l'écran visible, avec ou sans
+  // barre. Ni un ancrage bottom + y calculé en JS (le navigateur déplace
+  // l'élément avant que le JS ne recalcule y → le logo partait trop haut),
+  // ni un y calculé depuis la hauteur visible lue en JS (iOS la met à jour
+  // d'un coup, parfois en fin d'animation de barre → sauts) ne suivent la
+  // barre en temps réel. On exprime donc top en % du viewport via calc() :
+  // c'est le navigateur qui le résout, de façon synchrone avec la barre,
+  // exactement comme un ancrage bottom. Le JS ne fournit que la progression.
+  // clearProps : revenir à l'ancrage Webflow d'origine pour mesurer l'écart
+  // en bas (un retour sur la home via swup trouverait sinon le top posé à
+  // l'init précédente).
+  gsap.set(logoHome, { clearProps: 'top,bottom' })
   gsap.set(logoHome, { xPercent: -50, y: 0, width: '100%' })
+  const bottomGap = window.innerHeight - logoHome.getBoundingClientRect().bottom
+  gsap.set(logoHome, { bottom: 'auto' })
   setDockedState(logoHome, logoMain, false)
 
-  // Largeur/hauteur réellement rendues, mesurées directement (pas déduites
-  // d'un ratio supposé constant). set → mesure → reset se font de façon
-  // synchrone, avant le prochain paint : aucun flash visuel. La largeur
-  // n'est pas affectée par la barre d'adresse mobile (elle ne joue que sur
-  // la hauteur) : la mesurer une fois ici est donc sûr, contrairement à la
-  // hauteur qui doit être relue à chaque frame (voir plus bas).
-  const openWidth = logoHome.getBoundingClientRect().width
-  gsap.set(logoHome, { width: DOCKED_WIDTH })
-  const dockedHeight = logoHome.getBoundingClientRect().height
-  gsap.set(logoHome, { width: '100%' })
-
+  let stableVh = 0
+  let openWidth = 0
+  let openHeight = 0
   let docked = false
   let ticking = false
 
-  // Tout est recalculé ici à partir de window.innerHeight/window.scrollY lus
-  // À CET INSTANT, à chaque frame de scroll — aucune valeur mise en cache
-  // nulle part (pas de ScrollTrigger start/end figés, pas de refresh à
-  // déclencher). Sur mobile, quand la barre d'adresse apparaît/disparaît en
-  // scrollant, window.innerHeight change réellement d'une frame à l'autre :
-  // en le relisant à chaque frame plutôt qu'en dépendant d'un mécanisme de
-  // cache/invalidation (resize event, ScrollTrigger.refresh, etc. — qui se
-  // sont tous montrés en retard ou aveugles à ce changement précis), la
-  // position suit exactement, sans jamais pouvoir être en décalage.
+  // Largeur/hauteur réellement rendues, mesurées directement (pas déduites
+  // d'un ratio supposé constant). set → mesure → reset se font de façon
+  // synchrone, avant le prochain paint : aucun flash visuel.
+  function measure() {
+    stableVh = probe.getBoundingClientRect().height || window.innerHeight
+    gsap.set(logoHome, { width: '100%' })
+    const rect = logoHome.getBoundingClientRect()
+    openWidth = rect.width
+    openHeight = rect.height
+  }
+
+  // Même trajectoire qu'avant (bas de l'écran visible → haut, largeur 100% →
+  // 160px) : avec une hauteur proportionnelle à la largeur (interpolée
+  // linéairement), top = (1 - progress) × (100% - openHeight - bottomGap)
+  // - progress × bottomGap, où 100% = hauteur visible, résolue en CSS.
   function update() {
     ticking = false
 
-    const vh = window.innerHeight
-    const distance = vh * 2
+    const distance = stableVh * 2
     const progress = Math.min(1, Math.max(0, window.scrollY / distance))
-    const targetY = -(vh - dockedHeight)
 
-    gsap.set(logoHome, {
-      y: progress * targetY,
-      width: gsap.utils.interpolate(openWidth, DOCKED_WIDTH, progress),
-    })
+    logoHome.style.top = `calc(${1 - progress} * (100% - ${openHeight + bottomGap}px) - ${progress * bottomGap}px)`
+    gsap.set(logoHome, { width: gsap.utils.interpolate(openWidth, DOCKED_WIDTH, progress) })
 
     const shouldDock = progress >= 1
     if (shouldDock !== docked) {
@@ -68,16 +83,33 @@ export function initHome() {
     requestAnimationFrame(update)
   }
 
+  // Le resize (rotation, redimensionnement desktop) ne déclenche pas de
+  // scroll : on remesure puis on repositionne.
+  function onResize() {
+    measure()
+    update()
+  }
+
+  measure()
   update()
   window.addEventListener('scroll', onScroll, { passive: true })
-  // Le resize (rotation, redimensionnement desktop) ne déclenche pas de
-  // scroll : sans ce listener, la position resterait figée sur les valeurs
-  // du dernier scroll jusqu'au scroll suivant.
-  window.addEventListener('resize', update)
+  window.addEventListener('resize', onResize)
+
+  // Après une navigation swup, la mise en page (scroll remis à 0, barre
+  // d'adresse qui se réaffiche) n'est pas forcément stabilisée au moment de
+  // l'init : on remesure une fois la frame suivante passée, puis après la
+  // transition.
+  let settleFrame = requestAnimationFrame(() => {
+    settleFrame = requestAnimationFrame(onResize)
+  })
+  const settleTimeout = setTimeout(onResize, 500)
 
   cleanup = () => {
     window.removeEventListener('scroll', onScroll)
-    window.removeEventListener('resize', update)
+    window.removeEventListener('resize', onResize)
+    cancelAnimationFrame(settleFrame)
+    clearTimeout(settleTimeout)
+    probe.remove()
   }
 }
 
