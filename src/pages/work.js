@@ -1,3 +1,4 @@
+import { updateHistoryRecord } from 'swup'
 import { slugify } from '../utils/slugify.js'
 
 // .grid-item / .index-item ne sont pas forcément des enfants directs de leur
@@ -86,7 +87,11 @@ function initCategoryFilter() {
     } else {
       url.searchParams.set('category', slugify(category))
     }
-    window.history.replaceState(null, '', url)
+    // updateHistoryRecord (et non history.replaceState(null, ...)) : conserve
+    // l'état d'historique de swup (source: 'swup', index). Sans lui, swup
+    // ignore le popstate et le bouton "précédent" change l'URL sans changer
+    // la page.
+    updateHistoryRecord(url.pathname + url.search + url.hash)
   }
 
   const applyFilter = (category, { syncUrl = true } = {}) => {

@@ -31,5 +31,11 @@ export function initSwup(options = {}) {
     updateCurrentLinks(visit.to.url)
   })
 
+  // Boutons précédent/suivant du navigateur : pas de link:click, il faut
+  // donc aussi mettre à jour w--current ici.
+  swup.hooks.on('history:popstate', (visit) => {
+    updateCurrentLinks(visit.to.url)
+  })
+
   return swup
 }
