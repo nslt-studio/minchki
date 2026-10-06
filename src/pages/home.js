@@ -35,40 +35,42 @@ export function initHome() {
   // en bas (un retour sur la home via swup trouverait sinon le top posé à
   // l'init précédente).
   gsap.set(logoHome, { clearProps: 'top,bottom' })
-  gsap.set(logoHome, { xPercent: -50, y: 0, width: '100%' })
+  gsap.set(logoHome, { xPercent: -50, y: 0, yPercent: 0, width: '100%' })
   const bottomGap = window.innerHeight - logoHome.getBoundingClientRect().bottom
   gsap.set(logoHome, { bottom: 'auto' })
   setDockedState(logoHome, logoMain, false)
 
   let stableVh = 0
   let openWidth = 0
-  let openHeight = 0
   let docked = false
   let ticking = false
 
-  // Largeur/hauteur réellement rendues, mesurées directement (pas déduites
-  // d'un ratio supposé constant). set → mesure → reset se font de façon
-  // synchrone, avant le prochain paint : aucun flash visuel.
+  // Largeur réellement rendue, mesurée directement. set → mesure → reset se
+  // font de façon synchrone, avant le prochain paint : aucun flash visuel.
   function measure() {
     stableVh = probe.getBoundingClientRect().height || window.innerHeight
     gsap.set(logoHome, { width: '100%' })
-    const rect = logoHome.getBoundingClientRect()
-    openWidth = rect.width
-    openHeight = rect.height
+    openWidth = logoHome.getBoundingClientRect().width
   }
 
-  // Même trajectoire qu'avant (bas de l'écran visible → haut, largeur 100% →
-  // 160px) : avec une hauteur proportionnelle à la largeur (interpolée
-  // linéairement), top = (1 - progress) × (100% - openHeight - bottomGap)
-  // - progress × bottomGap, où 100% = hauteur visible, résolue en CSS.
+  // Bas de l'écran visible → haut, largeur 100% → 160px. Aucune hauteur
+  // mesurée en JS (une mesure faite avant que le logo ait sa taille finale
+  // — image/police pas encore chargée — le faisait passer sous l'écran) :
+  // top = (1 - progress) × (100% - bottomGap) - progress × bottomGap, où
+  // 100% = hauteur visible, et yPercent = -(1 - progress) × 100 remonte le
+  // logo de sa PROPRE hauteur courante. Les deux sont résolus par le
+  // navigateur : à progress 0, le bas du logo est exactement au bas visible.
   function update() {
     ticking = false
 
     const distance = stableVh * 2
     const progress = Math.min(1, Math.max(0, window.scrollY / distance))
 
-    logoHome.style.top = `calc(${1 - progress} * (100% - ${openHeight + bottomGap}px) - ${progress * bottomGap}px)`
-    gsap.set(logoHome, { width: gsap.utils.interpolate(openWidth, DOCKED_WIDTH, progress) })
+    logoHome.style.top = `calc(${1 - progress} * (100% - ${bottomGap}px) - ${progress * bottomGap}px)`
+    gsap.set(logoHome, {
+      yPercent: -(1 - progress) * 100,
+      width: gsap.utils.interpolate(openWidth, DOCKED_WIDTH, progress),
+    })
 
     const shouldDock = progress >= 1
     if (shouldDock !== docked) {
